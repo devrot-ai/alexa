@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: freshkeep
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: FRESHKEEP_REQUIRE_CONSENT
+        value: "1"
+      # For a persistent store across cold starts, set these after creating
+      # the table (see docs/AWS_SETUP.md):
+      # - key: FRESHKEEP_STORE
+      #   value: dynamodb
+      # - key: FRESHKEEP_DYNAMO_TABLE
+      #   value: FreshKeepHousehold
+      # - key: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (set as secret env vars)

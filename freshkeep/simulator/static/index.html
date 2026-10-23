@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreshKeep — simulated Alexa+ experience</title>
+<style>
+  :root{
+    --bg:#0a1220; --panel:#101b2e; --panel2:#0d1728; --line:#1d2c47;
+    --ink:#e8eef9; --muted:#8fa3c4; --accent:#31c4f3; --accent2:#5eead4;
+    --warn:#fbbf24; --bad:#f87171; --good:#34d399; --chip:#16233c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .logo{width:34px;height:34px;flex:0 0 auto}
+  h1{font-size:18px;margin:0;letter-spacing:.3px}
+  h1 small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+  .spacer{flex:1}
+  .badge{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--chip);color:var(--accent);border:1px solid var(--line);white-space:nowrap}
+  button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--ink);padding:8px 14px}
+  button:hover{border-color:var(--accent)}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#04202c;font-weight:600}
+  button.danger{color:var(--bad)}
+  main{display:grid;grid-template-columns:minmax(340px,1.15fr) minmax(320px,1fr);gap:0;height:calc(100vh - 63px)}
+  @media(max-width:980px){main{grid-template-columns:1fr;height:auto}}
+  /* ---- chat ---- */
+  #chat{display:flex;flex-direction:column;border-right:1px solid var(--line);min-height:0}
+  #transcript{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:86%;padding:10px 14px;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
+  .msg.user{align-self:flex-end;background:#1b3a5c;border:1px solid #26527e;border-bottom-right-radius:4px}
+  .msg.alexa{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg .who{font-size:11px;color:var(--muted);margin-bottom:3px;letter-spacing:.4px}
+  .card{margin-top:10px;background:#0c1a30;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px}
+  .card h3{margin:0 0 6px;font-size:14px;color:var(--accent2)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;margin:2px 4px 2px 0;border:1px solid var(--line);background:var(--chip)}
+  .pill.urgent{color:var(--bad)} .pill.use_soon{color:var(--warn)} .pill.fresh{color:var(--good)} .pill.expired{color:var(--bad)} .pill.no_date{color:var(--muted)}
+  #composer{display:flex;gap:8px;padding:14px;border-top:1px solid var(--line);background:var(--panel)}
+  #utterance{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:12px;color:var(--ink);padding:11px 14px;font:inherit}
+  #utterance:focus-visible{outline:2px solid var(--accent)}
+  .micbtn.listening{border-color:var(--bad);color:var(--bad);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  .hint{font-size:11px;color:var(--muted);padding:0 16px 10px}
+  /* ---- judge panel ---- */
+  #judge{overflow-y:auto;padding:18px;background:var(--panel2)}
+  #judge h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:18px 0 8px}
+  .stat{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed var(--line)}
+  .stat b{color:var(--accent)}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:8px;padding:8px 12px}
+  summary{cursor:pointer;font-size:13px;color:var(--accent2)}
+  pre{font-size:11px;overflow-x:auto;color:#c9d7ef;background:#080f1c;border-radius:8px;padding:8px;margin:8px 0 0}
+  .chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+  .quick{font-size:12px;padding:5px 10px}
+  /* ---- consent modal ---- */
+  #consentModal{position:fixed;inset:0;background:rgba(4,10,20,.82);display:flex;align-items:center;justify-content:center;z-index:50}
+  #consentModal[hidden]{display:none}
+  .modal{max-width:520px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;margin:16px}
+  .modal h2{margin-top:0}
+  .modal ul{color:var(--muted);font-size:14px;padding-left:18px}
+  .row{display:flex;gap:10px;margin-top:14px;justify-content:flex-end}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#12233e;border:1px solid var(--accent);padding:10px 16px;border-radius:10px;font-size:13px;z-index:60;display:none}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .dot.on{background:var(--good)} .dot.off{background:var(--bad)}
+</style>
+</head>
+<body>
+<header>
+  <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+    <circle cx="20" cy="20" r="18" fill="none" stroke="#31c4f3" stroke-width="2.5"/>
+    <path d="M13 26c2.5-7 4.5-11 7-16 .8 3 1.2 4.6 1.1 7.4 2-1.2 3.4-2.6 5.9-5.4-1 5.6-2.4 10.6-7 14-2-2.6-4.6-2.9-7 0z" fill="#5eead4"/>
+  </svg>
+  <h1>FreshKeep<small>Alexa+ kitchen memory · simulated experience (hackathon demo)</small></h1>
+  <div class="spacer"></div>
+  <span class="badge" id="backendBadge">…</span>
+  <span class="badge" id="consentBadge">consent: …</span>
+</header>
+
+<main>
+  <section id="chat" aria-label="Conversation with FreshKeep">
+    <div id="transcript" aria-live="polite"></div>
+    <div id="composer">
+      <button id="receiptBtn" title="Add groceries from a receipt" aria-label="Add from receipt">🧾</button>
+      <button id="micBtn" class="micbtn" title="Speak (falls back to typing if unavailable)" aria-label="Voice input">🎤</button>
+      <input id="utterance" type="text" maxlength="500" placeholder="Say: “We just bought spinach, yogurt, and chicken that expires in 2 days”" aria-label="Type a message to FreshKeep">
+      <button id="sendBtn" class="primary">Send</button>
+    </div>
+    <p class="hint">Voice input uses your browser's speech recognition when available; typing always works. Savings figures are demo estimates, not store prices.</p>
+  </section>
+
+  <aside id="judge" aria-label="Judge mode: system internals">
+    <h2>Judge mode</h2>
+    <div class="stat"><span>Transport</span><b id="statTransport">—</b></div>
+    <div class="stat"><span>MCP server</span><b id="statMcp">—</b></div>
+    <div class="stat"><span>Storage backend</span><b id="statStore">—</b></div>
+    <div class="stat"><span>Router</span><b id="statRouter">deterministic (LLM-free)</b></div>
+    <div class="stat"><span>Consent to store data</span><b><span id="consentDot" class="dot off"></span><span id="statConsent">off</span></b></div>
+
+    <h2>Tool-call trace (live MCP)</h2>
+    <div id="trace"><details><summary>No tool calls yet — say something!</summary></details></div>
+
+    <h2>Demo controls</h2>
+    <div class="chiprow">
+      <button id="seedBtn" class="quick">Seed demo kitchen</button>
+      <button id="resetBtn" class="quick">Reset demo</button>
+      <button id="wipeBtn" class="quick danger">Wipe all data</button>
+    </div>
+    <div class="chiprow">
+      <button class="quick say" data-say="We just bought spinach, 500 g of greek yogurt, and chicken breast that expires in 2 days">① Track groceries</button>
+      <button class="quick say" data-say="What needs rescuing?">② What needs rescuing?</button>
+      <button class="quick say" data-say="Plan a rescue meal">③ Plan a rescue meal</button>
+      <button class="quick say" data-say="Add soy sauce and spring onion to the shopping list">④ Add missing to list</button>
+      <button class="quick say" data-say="Show my waste report">⑤ Waste report</button>
+    </div>
+
+    <h2>Privacy &amp; safety</h2>
+    <p style="font-size:12px;color:var(--muted)">
+      Data is stored only after explicit consent, on the server you run (JSON file or DynamoDB).
+      Deletion is two-step (“delete my data” → explicit confirmation). Utterance text is never written
+      to the audit log. AI-generated text is marked as estimate/advice, never as verified fact.
+    </p>
+  </aside>
+</main>
+
+<div id="consentModal" hidden role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+  <div class="modal">
+    <h2 id="consentTitle">Before FreshKeep remembers anything</h2>
+    <p>FreshKeep keeps a memory of your kitchen so Alexa+ can help you waste less food. To do that it would store:</p>
+    <ul>
+      <li>what you bought, quantities, and expiry dates (estimated if you don't say one),</li>
+      <li>your shopping list and waste/rescue history.</li>
+    </ul>
+    <p>Nothing is stored until you consent. You can withdraw consent and delete everything at any time (“delete my data”). This demo instance uses synthetic sample data.</p>
+    <div class="row">
+      <button id="consentNo">Not now</button>
+      <button id="consentYes" class="primary">I consent — remember my kitchen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div id="receiptModal" hidden role="dialog" aria-modal="true" aria-labelledby="receiptTitle">
+  <div class="modal" style="max-width:640px">
+    <h2 id="receiptTitle">Add groceries from a receipt</h2>
+    <p style="color:var(--muted);font-size:13px">Paste the item lines (or the whole receipt — noise like totals and tax is ignored).
+      With <code>FRESHKEEP_TEXTRACT=1</code> you can also upload a photo (Amazon Textract).
+      Nothing is stored until you confirm the parsed items.</p>
+    <textarea id="receiptText" rows="8" maxlength="4000" placeholder="spinach 25.00&#10;2 x eggs 120&#10;milk 1 l 70"
+      style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);padding:10px;font:13px/1.5 monospace"></textarea>
+    <div class="row" style="justify-content:flex-start;align-items:center;gap:12px">
+      <label style="font-size:13px;color:var(--muted)">or photo: <input type="file" id="receiptFile" accept="image/png,image/jpeg"></label>
+      <button id="receiptParse" class="primary">Parse receipt</button>
+    </div>
+    <div id="receiptItems" style="margin-top:10px"></div>
+    <div class="row">
+      <button id="receiptCancel">Cancel</button>
+      <button id="receiptTrack" class="primary" disabled>Track selected items</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const transcript = $('transcript');
+  const clientId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  let busy = false;
+  let consented = false;
+
+  const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function addMsg(who, text){
+    const div = document.createElement('div');
+    div.className = 'msg ' + who;
+    div.innerHTML = '<div class="who">' + (who === 'user' ? 'YOU' : 'FRESHKEEP (via Alexa+)') + '</div>' + esc(text);
+    transcript.appendChild(div);
+    transcript.scrollTop = transcript.scrollHeight;
+    return div;
+  }
+
+  function statusPill(st){ return '<span class="pill ' + st + '">' + st.replace('_',' ') + '</span>'; }
+
+  function addCard(payload){
+    if(!payload || !Object.keys(payload).length) return;
+    const div = document.createElement('div');
+    div.className = 'msg alexa';
+    let html = '';
+    if(payload.tracked){
+      html += '<div class="card"><h3>Now in your kitchen</h3>' +
+        payload.tracked.map(i => '<span class="pill">' + esc(i.display_name) + ' · ' + (i.days_left==null?'no date':i.days_left+'d left') + (i.expiry_estimated?' · est.':'') + '</span>').join('') + '</div>';
+    }
+    if(payload.queue){
+      html += '<div class="card"><h3>Rescue queue</h3>' +
+        payload.queue.map(i => '<div>' + esc(i.display_name) + ' ' + statusPill(i.status) + ' <span style="color:var(--muted)">' + (i.days_left<0?'expired':'') + Math.abs(i.days_left) + 'd' + '</span></div>').join('') +
+        '<div style="margin-top:6px;color:var(--warn)">≈ $' + payload.value_at_risk_usd + ' at risk (estimate)</div></div>';
+    }
+    if(payload.plan){
+      const p = payload.plan;
+      html += '<div class="card"><h3>' + esc(p.recipe_name) + ' · ~' + p.minutes + ' min</h3>' +
+        '<div style="color:var(--muted)">' + esc(p.blurb) + '</div>' +
+        '<div style="margin-top:6px">Rescues: ' + p.rescued_items.map(r => '<span class="pill urgent">' + esc(r.name) + '</span>').join('') + '</div>' +
+        (p.missing.length ? '<div style="margin-top:4px">Missing: ' + p.missing.map(m => '<span class="pill">' + esc(m) + '</span>').join('') + '</div>' : '<div style="margin-top:4px;color:var(--good)">You have everything you need.</div>') +
+        '<ol style="margin:8px 0 0;padding-left:18px;color:var(--muted)">' + p.steps.map(s => '<li>' + esc(s) + '</li>').join('') + '</ol>' +
+        '<div style="margin-top:6px;color:var(--good)">≈ $' + p.estimated_savings_usd + ' saved (estimate)</div></div>';
+    }
+    if(payload.shopping_list_added){
+      html += '<div class="card"><h3>Shopping list updated</h3>' + payload.shopping_list_added.map(m => '<span class="pill">' + esc(m) + '</span>').join('') + '</div>';
+    }
+    if(payload.shopping_list){
+      html += '<div class="card"><h3>Shopping list</h3>' + payload.shopping_list.map(m => '<span class="pill">' + esc(m.name) + '</span>').join('') + '</div>';
+    }
+    if(payload.report){
+      const r = payload.report;
+      html += '<div class="card"><h3>Waste report (estimates)</h3>' +
+        '<div>Thrown away: <b style="color:var(--bad)">$' + r.wasted_usd_estimate + '</b> (' + r.wasted_items + ' items)</div>' +
+        '<div>Rescued: <b style="color:var(--good)">$' + r.rescued_usd_estimate + '</b> (' + r.rescue_meals_planned + ' meals)</div>' +
+        '<div>At risk right now: <b style="color:var(--warn)">$' + r.value_at_risk_usd + '</b></div></div>';
+    }
+    div.innerHTML = html;
+    if(html){ transcript.appendChild(div); transcript.scrollTop = transcript.scrollHeight; }
+  }
+
+  function addTrace(trace){
+    if(!trace) return;
+    const box = $('trace');
+    const d = document.createElement('details');
+    d.open = true;
+    d.innerHTML = '<summary>🔧 ' + esc(trace.tool) + ' · ' + trace.latency_ms + ' ms · ' + esc(trace.router) + '</summary>' +
+      '<pre>ARGS\n' + esc(JSON.stringify(trace.args, null, 2)) + '\n\nRESULT\n' + esc(JSON.stringify(trace.result, null, 2)).slice(0, 4000) + '</pre>';
+    box.prepend(d);
+    while(box.children.length > 12) box.removeChild(box.lastChild);
+    $('statRouter').textContent = trace.router;
+    $('statTransport').textContent = trace.invoker;
+  }
+
+  function toast(msg){
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2600);
+  }
+
+  async function api(path, body){
+    const res = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    let data = {}; try { data = await res.json(); } catch(e){}
+    return {status: res.status, data};
+  }
+
+  async function send(text){
+    if(busy || !text.trim()) return;
+    busy = true; $('sendBtn').disabled = true;
+    addMsg('user', text);
+    const thinking = addMsg('alexa', '…');
+    try{
+      const {status, data} = await api('/api/utterance', {text, client_id: clientId});
+      thinking.remove();
+      if(status === 429){ addMsg('alexa', data.message || 'Rate limited.'); return; }
+      if(!data.ok){ addMsg('alexa', data.message || 'Something went wrong. Please try again.'); return; }
+      if(data.intent === 'consent_required'){
+        addMsg('alexa', data.reply); $('consentModal').hidden = false; return;
+      }
+      addMsg('alexa', data.reply);
+      addCard(data.payload || {});
+      addTrace(data.trace);
+      if(['delete','consent'].includes(data.intent)) refreshConsent();
+    } catch(err){
+      thinking.remove();
+      addMsg('alexa', 'I could not reach the FreshKeep server. Check that both processes are running (see README).');
+    } finally {
+      busy = false; $('sendBtn').disabled = false; $('utterance').focus();
+    }
+  }
+
+  async function refreshConsent(){
+    try{
+      const res = await fetch('/healthz'); const h = await res.json();
+      $('backendBadge').textContent = 'invoker: ' + h.invoker;
+      $('statMcp').textContent = h.invoker;
+      $('statStore').textContent = h.store;
+    } catch(e){}
+    // consent state comes from last utterance response or default hidden modal
+  }
+
+  $('sendBtn').onclick = () => { const v = $('utterance').value; $('utterance').value=''; send(v); };
+  $('utterance').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('sendBtn').click(); } });
+
+  document.querySelectorAll('.say').forEach(b => b.onclick = () => send(b.dataset.say));
+
+  $('seedBtn').onclick = async () => { const {data} = await api('/api/seed', {}); toast(data.message || 'Seeded.'); };
+  $('resetBtn').onclick = async () => { const {data} = await api('/api/reset', {}); toast(data.message || 'Reset.'); };
+  $('wipeBtn').onclick = async () => {
+    if(!confirm('Erase all FreshKeep data via the two-step flow? (This simulates “delete my data” → confirm.)')) return;
+    await send('Delete my data');
+    setTimeout(() => send('yes, delete everything'), 400);
+  };
+
+  $('consentYes').onclick = async () => {
+    await api('/api/consent', {consent: true});
+    consented = true; $('consentModal').hidden = true;
+    $('consentBadge').textContent = 'consent: granted';
+    $('consentDot').className = 'dot on'; $('statConsent').textContent = 'granted';
+    addMsg('alexa', 'Thanks — I will remember your kitchen from now on. Try “What needs rescuing?”');
+  };
+  $('consentNo').onclick = () => {
+    $('consentModal').hidden = true;
+    addMsg('alexa', 'No problem. I will not store anything. You can still ask “help”.');
+  };
+
+  // ---------- voice input (optional; typing always works) ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const mic = $('micBtn');
+  if(!SR){ mic.style.display = 'none'; }
+  else {
+    const rec = new SR(); rec.lang = 'en-IN'; rec.interimResults = false;
+    mic.onclick = () => { try{ rec.start(); mic.classList.add('listening'); }catch(e){} };
+    rec.onresult = e => { $('utterance').value = e.results[0][0].transcript; send(e.results[0][0].transcript); };
+    rec.onend = () => mic.classList.remove('listening');
+    rec.onerror = () => { mic.classList.remove('listening'); toast('Mic unavailable — typing works too.'); };
+  }
+
+  // ---------- receipt ingestion ----------
+  let parsedItems = [];
+  $('receiptBtn').onclick = () => { $('receiptModal').hidden = false; $('receiptItems').innerHTML=''; $('receiptTrack').disabled = true; };
+  $('receiptCancel').onclick = () => { $('receiptModal').hidden = true; };
+
+  function renderParsed(items){
+    parsedItems = items;
+    $('receiptItems').innerHTML = items.map((it, i) =>
+      '<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:14px">' +
+      '<input type="checkbox" checked data-i="' + i + '"> ' + esc(it.name) +
+      (it.quantity !== 1 || it.unit !== 'unit' ? ' <span style="color:var(--muted)">(' + it.quantity + ' ' + it.unit + ')</span>' : '') +
+      (it.price_seen ? ' <span style="color:var(--muted)">· ₹/$ ' + it.price_seen + ' seen</span>' : '') +
+      '</label>').join('') || '<div style="color:var(--muted);font-size:13px">No items found.</div>';
+    $('receiptTrack').disabled = !items.length;
+  }
+
+  $('receiptParse').onclick = async () => {
+    const body = {client_id: clientId};
+    const file = $('receiptFile').files[0];
+    if(file){
+      body.image_b64 = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(file); });
+    } else {
+      body.text = $('receiptText').value;
+    }
+    const {status, data} = await api('/api/receipt', body);
+    if(!data.ok){ toast(data.message || 'Could not parse receipt.'); return; }
+    renderParsed(data.items);
+  };
+
+  $('receiptTrack').onclick = () => {
+    const sel = [...document.querySelectorAll('#receiptItems input:checked')].map(c => parsedItems[+c.dataset.i]);
+    $('receiptModal').hidden = true;
+    if(!sel.length) return;
+    const parts = sel.map(it => (it.quantity !== 1 || it.unit !== 'unit') ? (it.quantity + ' ' + it.unit + ' of ' + it.name) : it.name);
+    send('We just bought ' + parts.join(', '));
+  };
+
+  // ---------- first run ----------
+  addMsg('alexa', 'Hi! I am FreshKeep — your kitchen\u2019s memory, built as an Alexa+ MCP integration. I track what you buy, warn you before food spoils, and turn expiring ingredients into tonight\u2019s dinner. Press “Seed demo kitchen”, then try “What needs rescuing?”');
+  $('consentModal').hidden = false;
+  $('utterance').focus();
+  refreshConsent();
+})();
+</script>
+</body>
+</html>
