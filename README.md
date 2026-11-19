@@ -1,170 +1,57 @@
-# 🥬 FreshKeep — your kitchen's memory, built for Alexa+
+# FreshKeep — Your Kitchen Memory for Alexa
 
-> **FreshKeep gives Alexa+ persistent, structured memory of your kitchen — it knows
-> what you bought, warns you before food spoils, and turns expiring ingredients
-> into tonight's dinner.**
+FreshKeep remembers what is in your kitchen. You tell Alexa what you bought, and it tracks expiration dates, warns you before food goes bad, and suggests meals using what is about to expire.
 
-Built for **Build, Ship, Shape: The Amazon Developer Hackathon 2026**.
+Built for the Amazon Developer Hackathon 2026.
 
-- **Primary track:** Alexa+ — self-hosted **MCP server** (Streamable HTTP,
-  MCP spec 2026-07-28 via the official SDK; requirement was 2025-11-25+),
-  an **Agent Skill** definition, and a **simulated Alexa+ experience** web app
-  that acts as a real MCP client.
-- **Mini-challenges:** AWS Builder (Bedrock router + DynamoDB adapter seams) · Open Source (MIT).
+## Why It Exists
 
----
+Most households throw away about $1,500 of food a year. Not because people do not care, but because nobody wants to maintain a pantry app while carrying grocery bags. Voice is the answer, but Alexa needed a way to actually remember things. FreshKeep gives it that memory.
 
-## The problem
+## Try It
 
-The average household throws away roughly **$1,500 of food per year**
-(USDA estimates 30–40% of the food supply is wasted). The reason is not lack
-of caring — it's lack of *memory*: nobody maintains a pantry app when their
-hands are full of groceries. Voice is the natural fix, but before MCP, Alexa
-had no persistent, structured kitchen memory to reason over.
+Tell Alexa:
 
-## The 60-second wow
+"We just bought spinach, yogurt, and chicken that expires in two days."
 
-1. *"We just bought spinach, 500 g of yogurt, and chicken that expires in 2 days"* → FreshKeep tracks them with structured MCP tool calls (visible in judge mode).
-2. *"What needs rescuing?"* → 4 at-risk items, most urgent first, with money-at-risk.
-3. *"Plan a rescue meal"* → **Everything-Left Veggie Omelette**, rescuing 3 items, ≈$9.60 saved (estimate), and it notices you're missing bread.
-4. *"Add bread to the shopping list"* → write-back action completes the loop.
-5. *"Waste report"* → rescued vs wasted, in dollars.
-6. **🧾 Bonus:** paste a receipt → FreshKeep proposes the items (noise like totals/tax filtered) → confirm → tracked via the same MCP path. With `FRESHKEEP_TEXTRACT=1`, receipt *photos* are read by **Amazon Textract**.
+Then ask:
 
-Everything runs **deterministically** — the demo never depends on an LLM
-behaving. Optional Bedrock mode enhances natural-language routing with strict
-schema validation and automatic fallback.
+"What needs rescuing?"
 
-## Quickstart (2 terminals, no cloud account needed)
+It tells you what is about to go bad and how much money is at risk. Ask it to plan a rescue meal and it suggests something like a veggie omelette that uses up the expiring items. You can even paste a receipt and it will read the items for you.
+
+## Getting Started
+
+No cloud account needed. Just two terminals:
 
 ```bash
-git clone <this-repo> && cd freshkeep
-pip install -r requirements.txt          # add pytest via requirements-dev.txt for tests
+pip install -r requirements.txt
 
-# Terminal 1 — the MCP server (Streamable HTTP on :8811)
+# Terminal 1 — start the server
 python -m freshkeep.mcpserver
 
-# Terminal 2 — the simulated Alexa+ experience (:8800)
+# Terminal 2 — start the web interface
 python -m freshkeep.simulator.app
 ```
 
-Open **http://localhost:8800**, accept the consent prompt, press
-**Seed demo kitchen**, then use the quick-action chips (①–⑤) or type/speak:
+Open http://localhost:8800 in your browser, accept the consent prompt, and start talking to it.
 
-- *"What needs rescuing?"*
-- *"Plan a rescue meal"*
-- *"Add soy sauce to the shopping list"*
-- *"Waste report"*
-- *"Delete my data"* (two-step confirmation)
-- **🧾 button** next to the mic: paste a receipt → review parsed items → track
+## How It Works
 
-**Judge mode** (right panel) shows every live MCP tool call with arguments,
-structured JSON results, latency, and which router answered.
+The web interface sends your words to the server. The server figures out what you mean and calls the right tool — track items, check expiration, plan a meal, update the shopping list. Everything runs locally by default with a simple JSON file for storage. You can optionally use DynamoDB or Amazon Bedrock for more advanced features.
 
-### Verify the MCP endpoint directly
+## Configuration
 
-```bash
-curl -s -X POST http://127.0.0.1:8811/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'
-```
+Copy `.env.example` to `.env` and change what you need. The defaults work fine for local use. Key settings include the server ports, storage type (JSON or DynamoDB), and whether to enable Bedrock or Textract.
 
-### Tests
+## Privacy
 
-```bash
-pip install -r requirements-dev.txt
-pytest -q          # 34 tests: tools, router, receipts, API, and a real MCP wire loop
-```
+Nothing is saved until you say yes. Deleting your data takes two steps so it cannot happen by accident. Your words are never stored in logs. The AI never makes decisions on its own — it only calls tools that have been checked and approved.
 
-## Architecture (summary)
+## Project Structure
 
-```
-Browser (simulated Alexa+ experience, judge mode)
-        │  /api/utterance
-        ▼
-FastAPI simulator ── deterministic router (default)
-        │              └── optional Bedrock Converse router (schema-validated, fallback-safe)
-        │  MCP: initialize → tools/call  (Streamable HTTP)
-        ▼
-FreshKeep MCP server (official Python SDK, spec 2026-07-28)
-        │
-        ├── tool layer (validation, unit-aware merge, waste ledger)
-        ├── deterministic rescue-meal engine (curated templates, zero hallucination)
-        └── storage: JsonFileStore (default) | DynamoStore (FRESHKEEP_STORE=dynamodb)
-```
-
-Full diagram + AWS service justification: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-## Environment
-
-Copy `.env.example` → `.env` (or export vars). Everything has a safe local
-default; **no AWS account is required** for the core experience.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `FRESHKEEP_MCP_HOST/PORT` | `0.0.0.0:8811` | MCP server bind |
-| `FRESHKEEP_SIM_HOST/PORT` | `0.0.0.0:8800` | simulator bind |
-| `FRESHKEEP_STORE` | `json` | `json` or `dynamodb` |
-| `FRESHKEEP_JSON_PATH` | `data/household.json` | local store file |
-| `FRESHKEEP_DYNAMO_TABLE` | `FreshKeepHousehold` | DynamoDB table |
-| `FRESHKEEP_BEDROCK` | `0` | `1` enables the Bedrock NL router |
-| `FRESHKEEP_BEDROCK_MODEL` | `amazon.nova-lite-v1:0` | router model |
-| `FRESHKEEP_RATE_LIMIT` | `30` | utterances/min per client |
-| `FRESHKEEP_REQUIRE_CONSENT` | `1` | consent gate before any storage |
-| `FRESHKEEP_TEXTRACT` | `0` | `1` enables receipt-photo extraction via Amazon Textract |
-| `FRESHKEEP_TEXTRACT_REGION` | `AWS_REGION` | Textract region |
-
-## Privacy & safety (short version)
-
-- **Consent before storage** — nothing persists until granted; withdrawal supported.
-- **Two-step deletion** — "delete my data" then explicit confirmation; nothing is model-callable.
-- **Prompt-injection hardening** — user text is data only; router can only emit schema-validated calls to known tools; destructive tools unreachable from the model path.
-- **Audit log excludes utterance text** — tool names and counts only.
-- **Deterministic core** — AI never controls actions; savings figures are always labeled estimates.
-
-Details + full threat model: [`docs/SECURITY.md`](docs/SECURITY.md).
-
-## Honest status (what is verified)
-
-| Capability | Status |
-|---|---|
-| MCP server over Streamable HTTP (spec ≥ 2025-11-25) | ✅ tested end-to-end (`tests/test_mcp_wire.py`) |
-| Simulated Alexa+ experience as real MCP client | ✅ tested incl. rate-limit, consent, 2-step delete |
-| Deterministic router + rescue engine | ✅ unit-tested |
-| JSON file storage | ✅ exercised by all tests |
-| DynamoDB adapter (`DynamoStore`) | 🔧 implemented behind the same interface; live-verify with `python scripts/verify_aws.py` (setup: [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md)) |
-| Bedrock NL router (`bedrock.py`) | 🔧 implemented with strict validation + fallback; live-verify with the same script |
-| Receipt ingestion (`receipts.py`) | ✅ text path tested end-to-end; Textract photo adapter implemented, live-verifiable with the same script |
-| Agent Skill definition | 📄 follows public Agent Skills conventions; final format to be re-verified against Alexa+ docs before submission |
-
-## Repository map
-
-```
-freshkeep/               Python package
-├── mcpserver.py         MCP server entry (Streamable HTTP) — 13 tools
-├── mcpclient.py         Real MCP client used by the simulator + test harness
-├── tools.py             Tool logic + shared JSON schemas (single source of truth)
-├── router.py            Deterministic utterance → tool router
-├── bedrock.py           Optional Bedrock Converse router (guarded)
-├── rescue.py            Deterministic rescue-meal engine
-├── receipts.py          Receipt parsing (deterministic) + Amazon Textract adapter
-├── storage.py           JsonFileStore | DynamoStore
-├── models.py            Freshness math, validation helpers
-├── safety.py            Validation, rate limiter, PII-light audit log
-├── seed.py              Seeded demo kitchen (relative dates → always demo-ready)
-└── simulator/           FastAPI simulated Alexa+ experience + single-file UI
-skill/SKILL.md           Agent Skill definition for Alexa+
-tests/                   29 tests incl. real MCP wire loop
-docs/                    Architecture, security, demo script, judge guide,
-                         submission draft, product feedback, friction log,
-                         rules compliance
-```
-
-## Deadline (verified against the official page)
-
-**Oct 23, 2026 — 12:00 PM Pacific (PDT) · 3:00 PM EDT · = Oct 24, 2026, 00:30 IST (Asia/Kolkata).**
-Re-check before submitting: https://amazonappdev2026.devpost.com/
+The `freshkeep/` folder has all the Python code. The `tests/` folder has 34 tests. The `docs/` folder has architecture and security details. The `skill/` folder has the Alexa skill definition.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT
